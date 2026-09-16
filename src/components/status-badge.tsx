@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils';
-import type { CheckStatus } from '@/lib/mock-data';
+type CheckStatus = 'UP' | 'DOWN' | 'DEGRADED';
 
 const statusConfig: Record<
   CheckStatus | 'UNKNOWN',

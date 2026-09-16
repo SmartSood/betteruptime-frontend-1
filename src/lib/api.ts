@@ -42,14 +42,35 @@ export interface Website {
   url: string;
   user_id: string;
   time_added: string;
+  region_ids: (string | null)[];
+  poll_time: number;
 }
 
 export interface AllWebsitesResponse {
   websites: Website[];
 }
 
-export interface WebsiteResponse {
-  website: Website;
+export interface WebsiteTick {
+  id: string;
+  website_id: string;
+  region_id: string;
+  status: 'UP' | 'DOWN';
+  status_code: number | null;
+  response_time_ms: number;
+  dns_time_ms: number | null;
+  tcp_time_ms: number | null;
+  tls_time_ms: number | null;
+  ttfb_ms: number | null;
+  response_size_bytes: number | null;
+  content_valid: boolean | null;
+  ssl_valid: boolean | null;
+  ssl_days_remaining: number | null;
+  error: string | null;
+  created_at: string;
+}
+
+export interface WebsiteTickHistoryResponse {
+  ticks: WebsiteTick[];
 }
 
 // ── Token management ───────────────────────────────────
@@ -162,4 +183,7 @@ export const api = {
 
   getWebsite: (id: string) =>
     request<Website>(`/website/${id}`, { auth: true }),
+
+  getWebsiteTicks: (id: string, limit = 200) =>
+    request<WebsiteTickHistoryResponse>(`/website/${id}/ticks?limit=${limit}`, { auth: true }),
 };

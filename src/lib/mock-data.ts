@@ -148,9 +148,14 @@ export function getMonitorCurrentStatus(monitorId: string): CheckStatus {
 
 // ── Sample monitors for preview / API-fallback ──────────────────
 
-import type { Website } from '@/lib/api';
-
-export const MOCK_MONITORS: (Website & {
+export const MOCK_MONITORS: ({
+  id: string;
+  url: string;
+  user_id: string;
+  time_added: string;
+  region_ids: (string | null)[];
+  poll_time: number;
+} & {
   regions: string[];
   poll_time: number;
 })[] = [
@@ -159,6 +164,7 @@ export const MOCK_MONITORS: (Website & {
     url: 'https://api.acme.io',
     user_id: 'preview-user',
     time_added: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+    region_ids: ['us-east', 'eu-central', 'ap-southeast'],
     regions: ['us-east', 'eu-central', 'ap-southeast'],
     poll_time: 30,
   },
@@ -167,6 +173,7 @@ export const MOCK_MONITORS: (Website & {
     url: 'https://shop.brightside.dev',
     user_id: 'preview-user',
     time_added: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+    region_ids: ['us-east', 'us-west'],
     regions: ['us-east', 'us-west'],
     poll_time: 60,
   },
@@ -175,6 +182,7 @@ export const MOCK_MONITORS: (Website & {
     url: 'https://status.meridian.app',
     user_id: 'preview-user',
     time_added: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString(),
+    region_ids: ['us-east', 'eu-central', 'us-west', 'ap-southeast'],
     regions: ['us-east', 'eu-central', 'us-west', 'ap-southeast'],
     poll_time: 60,
   },
@@ -183,6 +191,7 @@ export const MOCK_MONITORS: (Website & {
     url: 'https://docs.northwind.io',
     user_id: 'preview-user',
     time_added: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+    region_ids: ['eu-central'],
     regions: ['eu-central'],
     poll_time: 120,
   },
@@ -191,6 +200,7 @@ export const MOCK_MONITORS: (Website & {
     url: 'https://gateway.orbital.dev',
     user_id: 'preview-user',
     time_added: new Date(Date.now() - 21 * 24 * 60 * 60 * 1000).toISOString(),
+    region_ids: ['us-east', 'ap-southeast'],
     regions: ['us-east', 'ap-southeast'],
     poll_time: 30,
   },

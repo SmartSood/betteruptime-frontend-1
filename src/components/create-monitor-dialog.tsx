@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, ApiError, type Region, type CreateWebsiteRequest } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -40,6 +40,7 @@ export function CreateMonitorDialog({
   const [urlError, setUrlError] = useState<string | null>(null);
   const [selectedRegions, setSelectedRegions] = useState<string[]>([]);
   const [pollTime, setPollTime] = useState(60);
+  const [customPollTime, setCustomPollTime] = useState('');
   const [regions, setRegions] = useState<Region[]>([]);
   const [regionsLoading, setRegionsLoading] = useState(false);
   const [regionsError, setRegionsError] = useState<string | null>(null);
@@ -67,10 +68,15 @@ export function CreateMonitorDialog({
     }
   }
 
-  function handleOpenChange(next: boolean) {
-    if (next) {
-      loadRegions();
+  // The dashboard controls this dialog's open state directly, so region
+  // loading must react to `open` rather than only a Dialog click callback.
+  useEffect(() => {
+    if (open) {
+      void loadRegions();
     }
+  }, [open]);
+
+  function handleOpenChange(next: boolean) {
     onOpenChange(next);
   }
 
@@ -100,6 +106,10 @@ export function CreateMonitorDialog({
     if (!validateUrl(url)) return;
     if (selectedRegions.length === 0) {
       setSubmitError('Select at least one region');
+      return;
+    }
+    if (!Number.isInteger(pollTime) || pollTime < 30) {
+      setSubmitError('Polling interval must be at least 30 seconds');
       return;
     }
 
@@ -218,7 +228,10 @@ export function CreateMonitorDialog({
                 <button
                   key={opt.value}
                   type="button"
-                  onClick={() => setPollTime(opt.value)}
+                  onClick={() => {
+                    setPollTime(opt.value);
+                    setCustomPollTime('');
+                  }}
                   className={`rounded-lg border px-3 py-1.5 text-sm transition-colors ${
                     pollTime === opt.value
                       ? 'border-primary/40 bg-primary/10 text-foreground'
@@ -229,6 +242,33 @@ export function CreateMonitorDialog({
                 </button>
               ))}
             </div>
+            <div className="flex items-center gap-2 pt-1">
+              <Label htmlFor="custom-poll-time" className="shrink-0 text-xs text-muted-foreground">
+                Custom
+              </Label>
+              <Input
+                id="custom-poll-time"
+                type="number"
+                min={30}
+                step={1}
+                inputMode="numeric"
+                placeholder="At least 30"
+                value={customPollTime}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setCustomPollTime(value);
+                  const seconds = Number(value);
+                  if (Number.isInteger(seconds) && seconds >= 30) {
+                    setPollTime(seconds);
+                  }
+                }}
+                className="max-w-40"
+              />
+              <span className="text-xs text-muted-foreground">seconds</span>
+            </div>
+            {customPollTime && Number(customPollTime) < 30 && (
+              <p className="text-xs text-destructive">Custom interval must be at least 30 seconds.</p>
+            )}
           </div>
 
           <div className="flex justify-end gap-3 pt-2">

@@ -16,14 +16,18 @@ npm install
 npm run dev
 ```
 
-The dev server starts automatically — no need to run it manually.
+For local integration with the Rust API, run the frontend on port 3001:
+
+```bash
+npm run dev -- -p 3001
+```
 
 ## Environment Variables
 
 Create a `.env.local` file in the project root:
 
 ```env
-NEXT_PUBLIC_API_URL=http://localhost:8080
+NEXT_PUBLIC_API_URL=http://127.0.0.1:3000
 ```
 
 | Variable              | Description                                      |
@@ -42,12 +46,13 @@ The frontend communicates with these endpoints:
 | POST   | `/website`         | Yes  | Create a monitor        |
 | GET    | `/all_websites`    | Yes  | List all monitors       |
 | GET    | `/website/:id`     | Yes  | Get a single monitor    |
+| GET    | `/website/:id/ticks?limit=1000` | Yes | Get check history for charts and logs |
 
 ### Important
 
 - **URLs in requests must be literal** — send `https://example.com`, not Markdown-style `[google](https://google.com)`.
-- **No mock endpoints are invented.** The backend does not yet expose tick history, current status, or delete/update APIs. Monitor detail charts and recent checks use local mock data in `src/lib/mock-data.ts` that is structured for easy replacement with a real endpoint later.
-- All API calls go through `src/lib/api.ts` — swap implementations there to connect real endpoints.
+- Dashboard status, uptime, response-time metrics, charts, and recent checks use the authenticated tick-history endpoint.
+- All API calls go through `src/lib/api.ts`.
 
 ## Project Structure
 

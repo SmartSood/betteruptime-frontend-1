@@ -2,19 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { api, type Website } from '@/lib/api';
-import {
-  getResponseTimeSeries,
-  getUptimeTimeline,
-  getRecentChecks,
-  getMonitorUptimePercent,
-  getMonitorAvgResponseTime,
-  getMonitorCurrentStatus,
-  getMockRegionName,
-  getMockMonitorById,
-  type MonitorCheck,
-  type CheckStatus,
-} from '@/lib/mock-data';
+import { api, type Website, type WebsiteTick } from '@/lib/api';
+import { averageResponseTime, monitorStatus, regionLabel, uptimePercent } from '@/lib/monitor-metrics';
 import { StatusBadge } from '@/components/status-badge';
 import { LoadingState, ErrorState } from '@/components/states';
 import { Button } from '@/components/ui/button';
@@ -39,12 +28,11 @@ import {
   Bar,
   Cell,
 } from 'recharts';
-import { format, formatDistanceToNow } from 'date-fns';
+import { format } from 'date-fns';
 
-const STATUS_COLORS: Record<CheckStatus, string> = {
+const STATUS_COLORS: Record<'UP' | 'DOWN', string> = {
   UP: 'hsl(var(--success))',
   DOWN: 'hsl(var(--destructive))',
-  DEGRADED: 'hsl(var(--warning))',
 };
 
 const PAGE_SIZE = 10;
@@ -55,29 +43,23 @@ export default function MonitorDetailsPage() {
   const monitorId = params.id as string;
 
   const [monitor, setMonitor] = useState<Website | null>(null);
+  const [ticks, setTicks] = useState<WebsiteTick[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [checksPage, setChecksPage] = useState(0);
-
-  const responseSeries = getResponseTimeSeries(monitorId);
-  const uptimeTimeline = getUptimeTimeline(monitorId);
-  const allChecks: MonitorCheck[] = getRecentChecks(monitorId);
 
   const loadMonitor = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await api.getWebsite(monitorId);
-      setMonitor(data);
-    } catch {
-      // API not available — fall back to sample data for preview
-      const mock = getMockMonitorById(monitorId);
-      setMonitor({
-        id: mock.id,
-        url: mock.url,
-        user_id: mock.user_id,
-        time_added: mock.time_added,
-      });
+      const [website, history] = await Promise.all([
+        api.getWebsite(monitorId),
+        api.getWebsiteTicks(monitorId, 1_000),
+      ]);
+      setMonitor(website);
+      setTicks(history.ticks);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load monitor');
     } finally {
       setLoading(false);
     }
@@ -106,20 +88,21 @@ export default function MonitorDetailsPage() {
 
   if (!monitor) return null;
 
-  const currentStatus = getMonitorCurrentStatus(monitorId);
-  const uptime = getMonitorUptimePercent(monitorId);
-  const avgResponse = getMonitorAvgResponseTime(monitorId);
-  const latestResponse =
-    responseSeries.length > 0 ? responseSeries[responseSeries.length - 1].responseTime : 0;
+  const currentStatus = monitorStatus(ticks);
+  const uptime = uptimePercent(ticks);
+  const avgResponse = averageResponseTime(ticks);
+  const latestResponse = ticks[0]?.response_time_ms ?? 0;
+  const allChecks = ticks;
 
-  const responseChartData = responseSeries.map((p) => ({
-    time: format(new Date(p.timestamp), 'HH:mm'),
-    responseTime: p.responseTime,
+  // Redis returns newest first; charts need oldest first.
+  const responseChartData = [...ticks].reverse().map((tick) => ({
+    time: format(new Date(tick.created_at), 'HH:mm'),
+    responseTime: tick.response_time_ms,
   }));
 
-  const uptimeChartData = uptimeTimeline.map((p) => ({
-    time: format(new Date(p.timestamp), 'MM/dd'),
-    status: p.status,
+  const uptimeChartData = [...ticks].reverse().map((tick) => ({
+    time: format(new Date(tick.created_at), 'MM/dd HH:mm'),
+    status: tick.status,
   }));
 
   const totalPages = Math.ceil(allChecks.length / PAGE_SIZE);
@@ -138,13 +121,13 @@ export default function MonitorDetailsPage() {
               <StatusBadge status={currentStatus} />
             </div>
             <div className="flex flex-wrap gap-1.5">
-              {['us-east', 'eu-central', 'us-west', 'ap-southeast'].map((r) => (
+              {monitor.region_ids.filter((region): region is string => Boolean(region)).map((r) => (
                 <span
                   key={r}
                   className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted px-2 py-0.5 text-xs text-muted-foreground"
                 >
                   <Globe className="h-3 w-3" />
-                  {getMockRegionName(r)}
+                  {regionLabel(r)}
                 </span>
               ))}
             </div>
@@ -154,14 +137,14 @@ export default function MonitorDetailsPage() {
         <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
           <HeroMetric
             label="Current status"
-            value={currentStatus === 'UP' ? 'Operational' : currentStatus === 'DOWN' ? 'Down' : 'Degraded'}
+            value={currentStatus === 'UP' ? 'Operational' : currentStatus === 'DOWN' ? 'Down' : 'Waiting'}
             icon={Activity}
             valueColor={
               currentStatus === 'UP'
                 ? 'text-success'
                 : currentStatus === 'DOWN'
                   ? 'text-destructive'
-                  : 'text-warning'
+                : 'text-muted-foreground'
             }
           />
           <HeroMetric
@@ -269,7 +252,7 @@ export default function MonitorDetailsPage() {
                 fontSize: '12px',
               }}
               labelStyle={{ color: 'hsl(var(--muted-foreground))' }}
-              formatter={(_value: number, _name: string, item: { payload?: { status: CheckStatus } }) => [
+              formatter={(_value: number, _name: string, item: { payload?: { status: 'UP' | 'DOWN' } }) => [
                 item?.payload?.status ?? 'UP',
                 'Status',
               ]}
@@ -325,24 +308,24 @@ export default function MonitorDetailsPage() {
                   className="border-b border-border/50 transition-colors hover:bg-muted/20 last:border-0"
                 >
                   <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
-                    {format(new Date(check.timestamp), 'MMM d, HH:mm:ss')}
+                    {format(new Date(check.created_at), 'MMM d, HH:mm:ss')}
                   </td>
-                  <td className="px-4 py-3 whitespace-nowrap">{check.regionName}</td>
+                  <td className="px-4 py-3 whitespace-nowrap">{regionLabel(check.region_id)}</td>
                   <td className="px-4 py-3">
                     <StatusBadge status={check.status} />
                   </td>
                   <td className="hidden px-4 py-3 sm:table-cell">
-                    {check.statusCode ? (
+                    {check.status_code ? (
                       <span
                         className={
-                          check.statusCode >= 500
+                          check.status_code >= 500
                             ? 'text-destructive'
-                            : check.statusCode >= 400
+                            : check.status_code >= 400
                               ? 'text-warning'
                               : 'text-muted-foreground'
                         }
                       >
-                        {check.statusCode}
+                        {check.status_code}
                       </span>
                     ) : (
                       <span className="text-muted-foreground">—</span>
@@ -354,10 +337,10 @@ export default function MonitorDetailsPage() {
                     ) : (
                       <span
                         className={
-                          check.responseTime > 300 ? 'text-warning' : 'text-foreground'
+                          check.response_time_ms > 300 ? 'text-warning' : 'text-foreground'
                         }
                       >
-                        {check.responseTime}ms
+                        {check.response_time_ms}ms
                       </span>
                     )}
                   </td>

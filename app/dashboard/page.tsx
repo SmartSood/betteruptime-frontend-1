@@ -3,12 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, type Website } from '@/lib/api';
-import {
-  getMonitorCurrentStatus,
-  getMonitorUptimePercent,
-  getMonitorAvgResponseTime,
-  MOCK_MONITORS,
-} from '@/lib/mock-data';
+import { averageResponseTime, monitorStatus, uptimePercent } from '@/lib/monitor-metrics';
 import { CreateMonitorDialog } from '@/components/create-monitor-dialog';
 import { StatusBadge } from '@/components/status-badge';
 import { LoadingState, ErrorState, EmptyState } from '@/components/states';
@@ -40,6 +35,7 @@ interface MonitorRow extends Website {
   avgResponseTime: number;
   regions: string[];
   pollTime: number;
+  lastCheck: string | null;
 }
 
 export default function DashboardPage() {
@@ -56,29 +52,21 @@ export default function DashboardPage() {
     setError(null);
     try {
       const res = await api.getAllWebsites();
-      const rows: MonitorRow[] = res.websites.map((w) => ({
-        ...w,
-        status: getMonitorCurrentStatus(w.id),
-        uptime: getMonitorUptimePercent(w.id),
-        avgResponseTime: getMonitorAvgResponseTime(w.id),
-        regions: ['us-east', 'eu-central'],
-        pollTime: 60,
+      const rows: MonitorRow[] = await Promise.all(res.websites.map(async (website) => {
+        const ticks = (await api.getWebsiteTicks(website.id, 100)).ticks;
+        return {
+          ...website,
+          status: monitorStatus(ticks),
+          uptime: uptimePercent(ticks),
+          avgResponseTime: averageResponseTime(ticks),
+          regions: website.region_ids.filter((region): region is string => Boolean(region)),
+          pollTime: website.poll_time,
+          lastCheck: ticks[0]?.created_at ?? null,
+        };
       }));
       setMonitors(rows);
-    } catch {
-      // API not available — fall back to sample data for preview
-      const rows: MonitorRow[] = MOCK_MONITORS.map((m) => ({
-        id: m.id,
-        url: m.url,
-        user_id: m.user_id,
-        time_added: m.time_added,
-        status: getMonitorCurrentStatus(m.id),
-        uptime: getMonitorUptimePercent(m.id),
-        avgResponseTime: getMonitorAvgResponseTime(m.id),
-        regions: m.regions,
-        pollTime: m.poll_time,
-      }));
-      setMonitors(rows);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load monitors');
     } finally {
       setLoading(false);
     }
@@ -264,9 +252,9 @@ export default function DashboardPage() {
                           {monitor.pollTime}s
                         </td>
                         <td className="hidden px-4 py-3 text-muted-foreground lg:table-cell">
-                          {formatDistanceToNow(new Date(monitor.time_added || Date.now()), {
-                            addSuffix: true,
-                          })}
+                          {monitor.lastCheck
+                            ? formatDistanceToNow(new Date(monitor.lastCheck), { addSuffix: true })
+                            : 'Not checked yet'}
                         </td>
                         <td className="hidden px-4 py-3 sm:table-cell">
                           <span
